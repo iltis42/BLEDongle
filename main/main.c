@@ -107,6 +107,7 @@ void autobaud( int len ){
 #define UART_RX_BUFFER_SIZE 256
 extern uint16_t conn_handle;
 extern uint16_t tx_handle;
+extern bool connected;
 
 void uart_to_ble_task(void *arg) {
     uint8_t uart_buffer[UART_RX_BUFFER_SIZE];
@@ -117,14 +118,14 @@ void uart_to_ble_task(void *arg) {
         len = uart_read_bytes(UART_NUM, uart_buffer, sizeof(uart_buffer), pdMS_TO_TICKS(100));
         uart_buffer[len] = 0;
         autobaud( len );
-        if (len > 0) {
-        	ESP_LOGI(TAG, "uart bytes read: %d\n data:%s", len, uart_buffer );
+        if (len > 0 && connected ) {
+        	// ESP_LOGI(TAG, "uart bytes read: %d\n data:%s", len, uart_buffer );
             // Send data as BLE notification
             struct os_mbuf *om = ble_hs_mbuf_from_flat(uart_buffer, len);
             if (om != NULL) {
                 int rc = ble_gattc_notify_custom(conn_handle, tx_handle, om);
                 if (rc == 0) {
-                	ESP_LOGI(TAG, "Sent %d bytes from UART to BLE\n", len);
+                	ESP_LOGI(TAG, "Sent %d bytes from UART to BLE conn %d\n", len, conn_handle);
                 } else {
                 	ESP_LOGI(TAG, "Failed to send notification: %d\n", rc);
                 }

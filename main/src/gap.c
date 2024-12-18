@@ -7,6 +7,7 @@
 #include "gap.h"
 #include "common.h"
 #include "gatt_svc.h"
+#include "esp_bt.h"
 
 /* Private function declarations */
 inline static void format_addr(char *addr_str, uint8_t addr[]);
@@ -71,7 +72,7 @@ static void start_advertising(void) {
     adv_fields.name_is_complete = 1;
 
     /* Set device tx power */
-    adv_fields.tx_pwr_lvl = BLE_HS_ADV_TX_PWR_LVL_AUTO;
+    adv_fields.tx_pwr_lvl = ESP_PWR_LVL_P9; // BLE_HS_ADV_TX_PWR_LVL_AUTO;
     adv_fields.tx_pwr_lvl_is_present = 1;
 
     /* Set device appearance */
@@ -114,8 +115,8 @@ static void start_advertising(void) {
     adv_params.disc_mode = BLE_GAP_DISC_MODE_GEN;
 
     /* Set advertising interval */
-    adv_params.itvl_min = BLE_GAP_ADV_ITVL_MS(500);
-    adv_params.itvl_max = BLE_GAP_ADV_ITVL_MS(510);
+    adv_params.itvl_min = BLE_GAP_ADV_ITVL_MS(20);
+    adv_params.itvl_max = BLE_GAP_ADV_ITVL_MS(60);
 
     /* Start advertising */
     rc = ble_gap_adv_start(own_addr_type, NULL, BLE_HS_FOREVER, &adv_params,
@@ -158,6 +159,7 @@ static int gap_event_handler(struct ble_gap_event *event, void *arg) {
                 return rc;
             }
             connected = true;
+            ESP_LOGI(TAG, "conn_handle %d", event->connect.conn_handle );
             conn_handle = event->connect.conn_handle;
 
             /* Print connection descriptor */

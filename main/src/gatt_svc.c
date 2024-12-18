@@ -128,40 +128,6 @@ static struct {
     bool tx_notify_enabled;    // Whether TX notifications are enabled
 } uart_subscription_state = { 0 };
 
-
-/*
-void gatt_svr_subscribe_cb(struct ble_gap_event *event) {
-    if (event->type == BLE_GAP_EVENT_SUBSCRIBE) {
-        struct ble_gap_event_subscribe *sub_event = &event->subscribe;
-
-        // Handle TX notifications
-        if (sub_event->attr_handle == tx_handle) {
-            if (sub_event->cur_notify) {
-                ESP_LOGI( TAG, "Client subscribed to TX notifications. conn_handle=%d, attr_handle=%d\n",
-                       sub_event->conn_handle, sub_event->attr_handle);
-                uart_subscription_state.conn_handle = sub_event->conn_handle;
-                uart_subscription_state.tx_notify_enabled = true;
-            } else {
-            	ESP_LOGI( TAG, "Client unsubscribed from TX notifications. conn_handle=%d, attr_handle=%d\n",
-                       sub_event->conn_handle, sub_event->attr_handle);
-                uart_subscription_state.tx_notify_enabled = false;
-            }
-        }
-
-        // Handle RX indications (if you plan to support indications)
-        if (sub_event->attr_handle == rx_handle) {
-            if (sub_event->cur_indicate) {
-            	ESP_LOGI( TAG, "Client subscribed to RX indications. conn_handle=%d, attr_handle=%d\n",
-                       sub_event->conn_handle, sub_event->attr_handle);
-            } else {
-            	ESP_LOGI( TAG, "Client unsubscribed from RX indications. conn_handle=%d, attr_handle=%d\n",
-                       sub_event->conn_handle, sub_event->attr_handle);
-            }
-        }
-    }
-}
-*/
-
 /*
  *  GATT server initialization
  *      1. Initialize GATT service
