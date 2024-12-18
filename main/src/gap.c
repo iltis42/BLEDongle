@@ -293,6 +293,8 @@ void adv_init(void) {
     start_advertising();
 }
 
+extern char device_id[];
+
 int gap_init(void) {
     /* Local variables */
     int rc = 0;
@@ -301,7 +303,7 @@ int gap_init(void) {
     ble_svc_gap_init();
 
     /* Set GAP device name */
-    rc = ble_svc_gap_device_name_set(DEVICE_NAME);
+    rc = ble_svc_gap_device_name_set(device_id);
     if (rc != 0) {
         ESP_LOGE(TAG, "failed to set device name to %s, error code: %d",
                  DEVICE_NAME, rc);

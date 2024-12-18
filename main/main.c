@@ -21,6 +21,9 @@
 #include "nimble/nimble_port.h"
 #include "nimble/nimble_port_freertos.h"
 #include "os/os.h"
+#include "esp_efuse.h"
+#include "miniz.h"
+#include "esp_mac.h"
 
 /* Library function declarations */
 void ble_store_config_init(void);
@@ -148,6 +151,8 @@ void uart_init(void) {
     uart_driver_install(UART_NUM, UART_BUF_SIZE, 0, 0, NULL, 0);
 }
 
+char device_id[32] = { 0 };
+
 void app_main(void) {
     /* Local variables */
     int rc;
@@ -157,6 +162,14 @@ void app_main(void) {
      * NVS flash initialization
      * Dependency of BLE stack to store configurations
      */
+
+    uint8_t mac[6];
+    unsigned int crc = 0;
+    if( esp_read_mac(mac, ESP_MAC_BT) == ESP_OK ) {
+    	crc = mz_crc32(0L, mac, 6) % 10000;
+    }
+    sprintf( device_id, "XCBLE-%04d", crc );
+
     ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES ||
         ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {

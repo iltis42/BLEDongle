@@ -25,9 +25,9 @@ uint16_t attr_handle = 0;
 uint16_t tx_handle = 0;
 uint16_t rx_handle = 0;
 
-static const ble_uuid128_t service_uuid = BLE_UUID128_INIT(0x6E, 0x40, 0x00, 0x01, 0xB5, 0xA3, 0xF3, 0x93, 0xE0, 0xA9, 0xE5, 0x0E, 0x24, 0xDC, 0xCA, 0x9E);
-static const ble_uuid128_t tx_uuid = BLE_UUID128_INIT(0x6E, 0x40, 0x00, 0x02, 0xB5, 0xA3, 0xF3, 0x93, 0xE0, 0xA9, 0xE5, 0x0E, 0x24, 0xDC, 0xCA, 0x9E);
-static const ble_uuid128_t rx_uuid = BLE_UUID128_INIT(0x6E, 0x40, 0x00, 0x03, 0xB5, 0xA3, 0xF3, 0x93, 0xE0, 0xA9, 0xE5, 0x0E, 0x24, 0xDC, 0xCA, 0x9E);
+static const ble_uuid128_t service_uuid = BLE_UUID128_INIT( 0x9E, 0xCA, 0xDC, 0x24, 0x0E, 0xE5, 0xA9, 0xE0, 0x93, 0xF3, 0xA3, 0xB5, 0x01, 0x00, 0x40, 0x6E ) ;
+static const ble_uuid128_t rx_uuid      = BLE_UUID128_INIT( 0x9E, 0xCA, 0xDC, 0x24, 0x0E, 0xE5, 0xA9, 0xE0, 0x93, 0xF3, 0xA3, 0xB5, 0x02, 0x00, 0x40, 0x6E );
+static const ble_uuid128_t tx_uuid      = BLE_UUID128_INIT( 0x9E, 0xCA, 0xDC, 0x24, 0x0E, 0xE5, 0xA9, 0xE0, 0x93, 0xF3, 0xA3, 0xB5, 0x03, 0x00, 0x40, 0x6E );
 
 // static uint8_t tx_value[256];
 // static uint8_t rx_value[256];
@@ -62,13 +62,14 @@ static const struct ble_gatt_svc_def gatt_services[] = {
             {
                 .uuid = &tx_uuid.u,
                 .access_cb = gatt_tx_write_cb, // TX is read-only or notify-only
-                .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY,
+//                 .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY,   // CHARACTERISTIC_UUID_TX,	BLECharacteristic::PROPERTY_NOTIFY
+				.flags = BLE_GATT_CHR_F_NOTIFY,
 				.val_handle = &tx_handle, // Capture the TX handle
             },
             {
                 .uuid = &rx_uuid.u,
-                .access_cb = gatt_rx_write_cb, // Callback to handle RX writes
-                .flags = BLE_GATT_CHR_F_WRITE,
+                .access_cb = gatt_rx_write_cb,  // Callback to handle RX writes
+                .flags = BLE_GATT_CHR_F_WRITE,  // CHARACTERISTIC_UUID_RX, BLECharacteristic::PROPERTY_WRITE
 				.val_handle = &rx_handle,
             },
             {0}, // End of characteristics
