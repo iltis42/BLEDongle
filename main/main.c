@@ -34,6 +34,24 @@ static void on_stack_sync(void);
 static void nimble_host_config_init(void);
 static void nimble_host_task(void *param);
 
+// UART configuration
+#define UART_NUM         UART_NUM_1
+#define TX_PIN           20
+#define RX_PIN           3
+#define UART_BUF_SIZE    1024
+static const int baud[] = { 0, 4800, 9600, 19200, 38400, 57600, 115200 };
+static int baudrate=3;
+static unsigned int timeout=600;
+#define UART_RX_BUFFER_SIZE 256
+
+// Extern Variables
+extern uint16_t conn_handle;
+extern uint16_t tx_handle;
+extern bool connected;
+
+// Local Variables
+char device_id[32] = { 0 };
+
 /* Private functions */
 /*
  *  Stack event callback functions
@@ -56,7 +74,6 @@ static void nimble_host_config_init(void) {
     ble_hs_cfg.sync_cb = on_stack_sync;
     ble_hs_cfg.gatts_register_cb = gatt_svr_register_cb;
     ble_hs_cfg.store_status_cb = ble_store_util_status_rr;
-
     /* Store host configuration */
     ble_store_config_init();
 }
@@ -72,16 +89,48 @@ static void nimble_host_task(void *param) {
     vTaskDelete(NULL);
 }
 
+// Funktion zur Berechnung der Prüfziffer
+uint8_t calculate_checksum(const char *message) {
+    uint8_t checksum = 0;
+    while (*message) {
+        if (*message == '$') {
+            message++;  // Ignoriere das Startzeichen
+            continue;
+        }
+        if (*message == '*') {
+            break;  // Stoppe, wenn das Endzeichen erreicht wird
+        }
+        checksum ^= *message;  // XOR-Verknüpfung der Zeichen
+        message++;
+    }
+    return checksum;
+}
 
-// UART configuration
-#define UART_NUM         UART_NUM_1
-#define TX_PIN           20
-#define RX_PIN           3
-#define UART_BUF_SIZE    1024
-
-static const int baud[] = { 0, 4800, 9600, 19200, 38400, 57600, 115200 };
-static int baudrate=3;
-static unsigned int timeout=600;
+// Funktion zur Überprüfung der NMEA-Nachricht
+bool check_nmea_message(const char *message) {
+    // Überprüfe, ob die Nachricht mit '$' beginnt und mit '*' endet
+    if (message[0] != '$' || strchr(message, '*') == NULL) {
+        return false;
+    }
+    // Finde die Position des '*' (Prüfziffer)
+    char *checksum_pos = strchr(message, '*');
+    if (checksum_pos == NULL) {
+        return false;
+    }
+    // Extrahiere die Prüfziffer aus der Nachricht (nach dem '*' kommen zwei Hex-Zeichen)
+    uint8_t received_checksum;
+    if (sscanf(checksum_pos + 1, "%2hhx", &received_checksum) != 1) {
+        return false;
+    }
+    // Berechne die Prüfziffer aus der Nachricht
+    uint8_t calculated_checksum = calculate_checksum(message);
+    // Vergleiche die berechnete und empfangene Prüfziffer
+    if (calculated_checksum != received_checksum) {
+        return false;
+    }
+    // Wenn alle Prüfungen bestanden sind, ist die Nachricht konsistent
+    return true;
+}
 
 void next_baud(){
 	baudrate++;
@@ -92,34 +141,41 @@ void next_baud(){
 	uart_set_baudrate(UART_NUM, baud[baudrate]);
 }
 
-void autobaud( int len ){
-	if( len == 0 ){
+bool autobaud( int len, uint8_t *msg ){
+	bool okay = false;
+	for( int i=0; i< len; i++ ){
+		char c = msg[i];
+		if( c =='$' ){
+			if( check_nmea_message( (char *)&(msg[i]) ) ){
+				okay = true;
+			    break;
+			}
+		}
+	}
+	// ESP_LOGI(TAG, "autobaud:%d baud, okay:%d", baud[baudrate], okay );
+	if( !okay ){
 		timeout--;
 		if( timeout == 0 ){
 			next_baud();
 			timeout = 30;
 		}
 	}else{
+		// ESP_LOGI(TAG, "autobaud OKAY baud=%d", baud[baudrate] );
 		timeout = 3000;  // 300 seconds -> 5 minutes
 	}
+	return okay;
 }
-
-#define UART_RX_BUFFER_SIZE 256
-extern uint16_t conn_handle;
-extern uint16_t tx_handle;
-extern bool connected;
 
 void uart_to_ble_task(void *arg) {
     uint8_t uart_buffer[UART_RX_BUFFER_SIZE];
     int len;
-
     while (1) {
         // Read from UART
-        len = uart_read_bytes(UART_NUM, uart_buffer, sizeof(uart_buffer), pdMS_TO_TICKS(100));
+        len = uart_read_bytes(UART_NUM, uart_buffer, sizeof(uart_buffer), pdMS_TO_TICKS(50));
         uart_buffer[len] = 0;
-        autobaud( len );
-        if (len > 0 && connected ) {
-        	// ESP_LOGI(TAG, "uart bytes read: %d\n data:%s", len, uart_buffer );
+        bool okay = autobaud( len, uart_buffer );
+        if (len > 0 && connected && okay ) {
+        	// ESP_LOGI(TAG, "uart bytes read: %d\n data:%s\n", len, uart_buffer );
             // Send data as BLE notification
             struct os_mbuf *om = ble_hs_mbuf_from_flat(uart_buffer, len);
             if (om != NULL) {
@@ -133,7 +189,6 @@ void uart_to_ble_task(void *arg) {
         }
     }
 }
-
 
 // UART setup
 void uart_init(void) {
@@ -152,8 +207,6 @@ void uart_init(void) {
     uart_driver_install(UART_NUM, UART_BUF_SIZE, 0, 0, NULL, 0);
 }
 
-char device_id[32] = { 0 };
-
 void app_main(void) {
     /* Local variables */
     int rc;
@@ -163,7 +216,6 @@ void app_main(void) {
      * NVS flash initialization
      * Dependency of BLE stack to store configurations
      */
-
     uint8_t mac[6];
     unsigned int crc = 0;
     if( esp_read_mac(mac, ESP_MAC_BT) == ESP_OK ) {
@@ -181,7 +233,6 @@ void app_main(void) {
         ESP_LOGE(TAG, "failed to initialize nvs flash, error code: %d ", ret);
         return;
     }
-
     /* NimBLE stack initialization */
     ret = nimble_port_init();
     if (ret != ESP_OK) {
@@ -189,21 +240,18 @@ void app_main(void) {
                  ret);
         return;
     }
-
     /* GAP service initialization */
     rc = gap_init();
     if (rc != 0) {
         ESP_LOGE(TAG, "failed to initialize GAP service, error code: %d", rc);
         return;
     }
-
     /* GATT server initialization */
     rc = gatt_svc_init();
     if (rc != 0) {
         ESP_LOGE(TAG, "failed to initialize GATT server, error code: %d", rc);
         return;
     }
-
     /* NimBLE host configuration initialization */
     nimble_host_config_init();
 
