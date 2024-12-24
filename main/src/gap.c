@@ -21,6 +21,8 @@ static uint8_t addr_val[6] = {0};
 static uint8_t esp_uri[] = {BLE_GAP_URI_PREFIX_HTTPS, '/', '/', 'e', 's', 'p', 'r', 'e', 's', 's', 'i', 'f', '.', 'c', 'o', 'm'};
 bool connected = false;
 uint16_t conn_handle = 0;
+extern int holddown;
+extern bool connected;
 
 /* Private functions */
 inline static void format_addr(char *addr_str, uint8_t addr[]) {
@@ -56,6 +58,7 @@ static void print_conn_desc(struct ble_gap_conn_desc *desc) {
 
 static void start_advertising(void) {
     /* Local variables */
+	 ESP_LOGI(TAG, "start advertising...");
     int rc = 0;
     const char *name;
     struct ble_hs_adv_fields adv_fields = {0};
@@ -100,7 +103,7 @@ static void start_advertising(void) {
     rsp_fields.uri_len = sizeof(esp_uri);
 
     /* Set advertising interval */
-    rsp_fields.adv_itvl = BLE_GAP_ADV_ITVL_MS(500);
+    rsp_fields.adv_itvl = BLE_GAP_ADV_ITVL_MS(40);  // was 500
     rsp_fields.adv_itvl_is_present = 1;
 
     /* Set scan response fields */
@@ -109,23 +112,32 @@ static void start_advertising(void) {
         ESP_LOGE(TAG, "failed to set scan response data, error code: %d", rc);
         return;
     }
-
+    ESP_LOGI(TAG, "start advertising 2");
     /* Set non-connetable and general discoverable mode to be a beacon */
     adv_params.conn_mode = BLE_GAP_CONN_MODE_UND;
     adv_params.disc_mode = BLE_GAP_DISC_MODE_GEN;
+    adv_params.channel_map = BLE_GAP_ADV_DFLT_CHANNEL_MAP;
 
     /* Set advertising interval */
     adv_params.itvl_min = BLE_GAP_ADV_ITVL_MS(20);
-    adv_params.itvl_max = BLE_GAP_ADV_ITVL_MS(60);
+    adv_params.itvl_max = BLE_GAP_ADV_ITVL_MS(128);
+    ESP_LOGI(TAG, "start advertising 3");
 
+    if (ble_gap_adv_active()) {
+        ESP_LOGW(TAG, "Advertising already active, stopping previous session.");
+        ble_gap_adv_stop();
+    }
+    ESP_LOGI(TAG, "start advertising 4");
     /* Start advertising */
     rc = ble_gap_adv_start(own_addr_type, NULL, BLE_HS_FOREVER, &adv_params,
                            gap_event_handler, NULL);
+    ESP_LOGI(TAG, "adv rc: %d", rc );
+    ESP_LOGI(TAG, "advertising started! 1");
     if (rc != 0) {
         ESP_LOGE(TAG, "failed to start advertising, error code: %d", rc);
         return;
     }
-    ESP_LOGI(TAG, "advertising started!");
+    ESP_LOGI(TAG, "advertising started! 2");
 }
 
 /*
@@ -138,13 +150,22 @@ static int gap_event_handler(struct ble_gap_event *event, void *arg) {
     int rc = 0;
     struct ble_gap_conn_desc desc;
 
+    ESP_LOGI(TAG, "gap_event_handler event: %d", event->type );
+
     /* Handle different GAP event */
     switch (event->type) {
 
     /* Connect event */
     case BLE_GAP_EVENT_CONNECT:
+    	 ESP_LOGI(TAG, "event connect %s; status=%d",
+    	                 event->connect.status == 0 ? "established" : "failed",
+    	                 event->connect.status);
+
+    	break;
+
+    case BLE_GAP_EVENT_LINK_ESTAB:
         /* A new connection was established or a connection attempt failed. */
-        ESP_LOGI(TAG, "connection %s; status=%d",
+        ESP_LOGI(TAG, "connection link established %s; status=%d",
                  event->connect.status == 0 ? "established" : "failed",
                  event->connect.status);
 
@@ -193,6 +214,7 @@ static int gap_event_handler(struct ble_gap_event *event, void *arg) {
                  event->disconnect.reason);
 
         connected = false;
+        holddown = 30;
         /* Restart advertising */
         start_advertising();
         return rc;
@@ -218,7 +240,7 @@ static int gap_event_handler(struct ble_gap_event *event, void *arg) {
         /* Advertising completed, restart advertising */
         ESP_LOGI(TAG, "advertise complete; reason=%d",
                  event->adv_complete.reason);
-        start_advertising();
+        start_advertising(); // why this is here?
         return rc;
 
     /* Notification sent event */
@@ -261,6 +283,21 @@ static int gap_event_handler(struct ble_gap_event *event, void *arg) {
     return rc;
 }
 
+void update_params(){
+	if( conn_handle ){
+		struct ble_gap_upd_params params = { 0 };
+		params.itvl_min = 20;  // Beispiel für das minimale Verbindungsintervall
+		params.itvl_max = 128;  // Beispiel für das maximale Verbindungsintervall
+		params.latency = 0;    // Keine Latenz
+		params.supervision_timeout = 500;  // Timeout nach 1 Sekunde Inaktivität
+		int rc = ble_gap_update_params(conn_handle, &params);
+		if (rc != 0) {
+			ESP_LOGE(TAG, "Failed to update connection parameters, error code: %d", rc);
+			connected = false;
+			holddown = 30;
+		}
+	}
+}
 
 /* Public functions */
 void adv_init(void) {

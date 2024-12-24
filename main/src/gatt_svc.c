@@ -49,7 +49,7 @@ static int gatt_rx_write_cb(uint16_t conn_handle, uint16_t attr_handle,
 
 static int gatt_tx_write_cb(uint16_t conn_handle, uint16_t attr_handle,
                             struct ble_gatt_access_ctxt *ctxt, void *arg) {
-
+	ESP_LOGI(TAG, "tx cb handle=%d attr:%d op:%d", conn_handle, attr_handle, ctxt->op );
     return BLE_ATT_ERR_UNLIKELY;
 }
 

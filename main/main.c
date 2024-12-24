@@ -48,6 +48,7 @@ static unsigned int timeout=600;
 extern uint16_t conn_handle;
 extern uint16_t tx_handle;
 extern bool connected;
+int holddown = 30;  // 3 Seconds
 
 // Local Variables
 char device_id[32] = { 0 };
@@ -166,27 +167,41 @@ bool autobaud( int len, uint8_t *msg ){
 	return okay;
 }
 
+extern void update_params();
+
+void keep_alive(void *arg) {
+	while(1){
+		vTaskDelay(pdMS_TO_TICKS(5000));
+		update_params();
+	}
+}
+
 void uart_to_ble_task(void *arg) {
     uint8_t uart_buffer[UART_RX_BUFFER_SIZE];
     int len;
     while (1) {
-        // Read from UART
-        len = uart_read_bytes(UART_NUM, uart_buffer, sizeof(uart_buffer), pdMS_TO_TICKS(50));
-        uart_buffer[len] = 0;
-        bool okay = autobaud( len, uart_buffer );
-        if (len > 0 && connected && okay ) {
-        	// ESP_LOGI(TAG, "uart bytes read: %d\n data:%s\n", len, uart_buffer );
-            // Send data as BLE notification
-            struct os_mbuf *om = ble_hs_mbuf_from_flat(uart_buffer, len);
-            if (om != NULL) {
-                int rc = ble_gattc_notify_custom(conn_handle, tx_handle, om);
-                if (rc == 0) {
-                	ESP_LOGI(TAG, "Sent %d bytes from UART to BLE conn %d\n", len, conn_handle);
-                } else {
-                	ESP_LOGI(TAG, "Failed to send notification: %d\n", rc);
-                }
-            }
-        }
+    	if( connected && holddown ){
+    		holddown--;
+    		vTaskDelay(pdMS_TO_TICKS(100));
+    	}else{
+    		// Read from UART
+    		len = uart_read_bytes(UART_NUM, uart_buffer, sizeof(uart_buffer), pdMS_TO_TICKS(50));
+    		uart_buffer[len] = 0;
+    		bool okay = autobaud( len, uart_buffer );
+    		if (len > 0 && connected && okay ) {
+    			// ESP_LOGI(TAG, "uart bytes read: %d\n data:%s\n", len, uart_buffer );
+    			// Send data as BLE notification
+    			struct os_mbuf *om = ble_hs_mbuf_from_flat(uart_buffer, len);
+    			if (om != NULL) {
+    				int rc = ble_gattc_notify_custom(conn_handle, tx_handle, om);
+    				if (rc == 0) {
+    					ESP_LOGI(TAG, "Sent %d bytes from UART to BLE conn %d\n", len, conn_handle);
+    				} else {
+    					ESP_LOGI(TAG, "Failed to send notification: %d\n", rc);
+    				}
+    			}
+    		}
+    	}
     }
 }
 
@@ -261,8 +276,9 @@ void app_main(void) {
     uart_init(); // initialize serial interface
 
     /* Start NimBLE host task thread and return */
-    xTaskCreate(nimble_host_task, "NimBLE Host", 4*1024, NULL, 9, NULL);
+    xTaskCreate(nimble_host_task, "NimBLE Host", 4*1024, NULL, 15, NULL);
     xTaskCreate(uart_to_ble_task, "UART2BLE Task", 4*1024, NULL, 10, NULL);
+    xTaskCreate(keep_alive, "KeepAlive", 4*1024, NULL, 9, NULL);
     return;
 }
 
