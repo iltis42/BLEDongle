@@ -63,7 +63,7 @@ static const struct ble_gatt_svc_def gatt_services[] = {
                 .uuid = &tx_uuid.u,
                 .access_cb = gatt_tx_write_cb, // TX is read-only or notify-only
 //                 .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY,   // CHARACTERISTIC_UUID_TX,	BLECharacteristic::PROPERTY_NOTIFY
-				.flags = BLE_GATT_CHR_F_NOTIFY,
+				.flags = BLE_GATT_CHR_F_NOTIFY,   // indicate events are too slow -> notify has much better performance
 				.val_handle = &tx_handle, // Capture the TX handle
             },
             {

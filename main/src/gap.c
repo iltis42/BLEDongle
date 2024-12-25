@@ -23,6 +23,8 @@ bool connected = false;
 uint16_t conn_handle = 0;
 extern int holddown;
 extern bool connected;
+extern bool subscribed;
+extern bool mtu_negotiated;
 
 /* Private functions */
 inline static void format_addr(char *addr_str, uint8_t addr[]) {
@@ -58,7 +60,6 @@ static void print_conn_desc(struct ble_gap_conn_desc *desc) {
 
 static void start_advertising(void) {
     /* Local variables */
-	 ESP_LOGI(TAG, "start advertising...");
     int rc = 0;
     const char *name;
     struct ble_hs_adv_fields adv_fields = {0};
@@ -112,7 +113,6 @@ static void start_advertising(void) {
         ESP_LOGE(TAG, "failed to set scan response data, error code: %d", rc);
         return;
     }
-    ESP_LOGI(TAG, "start advertising 2");
     /* Set non-connetable and general discoverable mode to be a beacon */
     adv_params.conn_mode = BLE_GAP_CONN_MODE_UND;
     adv_params.disc_mode = BLE_GAP_DISC_MODE_GEN;
@@ -121,23 +121,59 @@ static void start_advertising(void) {
     /* Set advertising interval */
     adv_params.itvl_min = BLE_GAP_ADV_ITVL_MS(20);
     adv_params.itvl_max = BLE_GAP_ADV_ITVL_MS(128);
-    ESP_LOGI(TAG, "start advertising 3");
 
     if (ble_gap_adv_active()) {
         ESP_LOGW(TAG, "Advertising already active, stopping previous session.");
         ble_gap_adv_stop();
     }
-    ESP_LOGI(TAG, "start advertising 4");
     /* Start advertising */
     rc = ble_gap_adv_start(own_addr_type, NULL, BLE_HS_FOREVER, &adv_params,
                            gap_event_handler, NULL);
-    ESP_LOGI(TAG, "adv rc: %d", rc );
-    ESP_LOGI(TAG, "advertising started! 1");
     if (rc != 0) {
         ESP_LOGE(TAG, "failed to start advertising, error code: %d", rc);
         return;
     }
-    ESP_LOGI(TAG, "advertising started! 2");
+    ESP_LOGI(TAG, "advertising started!");
+}
+
+
+static const char *gap_event_type_to_string(int event_type) {
+    switch (event_type) {
+        case BLE_GAP_EVENT_CONNECT:
+            return "BLE_GAP_EVENT_CONNECT"; // Connection established
+        case BLE_GAP_EVENT_DISCONNECT:
+            return "BLE_GAP_EVENT_DISCONNECT"; // Disconnection occurred
+        case BLE_GAP_EVENT_CONN_UPDATE:
+            return "BLE_GAP_EVENT_CONN_UPDATE"; // Connection parameters updated
+        case BLE_GAP_EVENT_ADV_COMPLETE:
+            return "BLE_GAP_EVENT_ADV_COMPLETE"; // Advertising completed
+        case BLE_GAP_EVENT_ENC_CHANGE:
+            return "BLE_GAP_EVENT_ENC_CHANGE"; // Encryption change
+        case BLE_GAP_EVENT_MTU:
+            return "BLE_GAP_EVENT_MTU"; // MTU updated
+        case BLE_GAP_EVENT_SUBSCRIBE:
+            return "BLE_GAP_EVENT_SUBSCRIBE"; // Client subscription to notifications/indications
+        case BLE_GAP_EVENT_NOTIFY_TX:
+            return "BLE_GAP_EVENT_NOTIFY_TX"; // Notification sent
+        case BLE_GAP_EVENT_NOTIFY_RX:
+            return "BLE_GAP_EVENT_NOTIFY_RX"; // Notification received
+        case BLE_GAP_EVENT_REPEAT_PAIRING:
+        	return "BLE_GAP_EVENT_REPEAT_PAIRING";
+        case BLE_GAP_EVENT_CONN_UPDATE_REQ:
+            return "BLE_GAP_EVENT_CONN_UPDATE_REQ"; // Connection update request
+        case BLE_GAP_EVENT_L2CAP_UPDATE_REQ:
+            return "BLE_GAP_EVENT_L2CAP_UPDATE_REQ"; // L2CAP connection parameters update request
+        case BLE_GAP_EVENT_PASSKEY_ACTION:
+            return "BLE_GAP_EVENT_PASSKEY_ACTION"; // Passkey action required (pairing)
+        case BLE_GAP_EVENT_PARING_COMPLETE:
+            return "BLE_GAP_EVENT_PARING_COMPLETE"; // Pairing process completed
+        case BLE_GAP_EVENT_SCAN_REQ_RCVD:
+            return "BLE_GAP_EVENT_SCAN_REQ_RCVD"; // Scan request received
+        case BLE_GAP_EVENT_LINK_ESTAB:
+        	return "BLE_GAP_EVENT_LINK_ESTAB";
+        default:
+            return "UNKNOWN_EVENT"; // Fallback for undefined events
+    }
 }
 
 /*
@@ -150,20 +186,14 @@ static int gap_event_handler(struct ble_gap_event *event, void *arg) {
     int rc = 0;
     struct ble_gap_conn_desc desc;
 
-    ESP_LOGI(TAG, "gap_event_handler event: %d", event->type );
+    ESP_LOGI(TAG, "gap_event_handler event: %d (%s)", event->type, gap_event_type_to_string(event->type) );
 
     /* Handle different GAP event */
     switch (event->type) {
 
     /* Connect event */
     case BLE_GAP_EVENT_CONNECT:
-    	 ESP_LOGI(TAG, "event connect %s; status=%d",
-    	                 event->connect.status == 0 ? "established" : "failed",
-    	                 event->connect.status);
-
-    	break;
-
-    case BLE_GAP_EVENT_LINK_ESTAB:
+    // case BLE_GAP_EVENT_LINK_ESTAB:    // on pairing
         /* A new connection was established or a connection attempt failed. */
         ESP_LOGI(TAG, "connection link established %s; status=%d",
                  event->connect.status == 0 ? "established" : "failed",
@@ -214,6 +244,8 @@ static int gap_event_handler(struct ble_gap_event *event, void *arg) {
                  event->disconnect.reason);
 
         connected = false;
+        subscribed = false;
+        mtu_negotiated = false;
         holddown = 30;
         /* Restart advertising */
         start_advertising();
@@ -222,9 +254,7 @@ static int gap_event_handler(struct ble_gap_event *event, void *arg) {
     /* Connection parameters update event */
     case BLE_GAP_EVENT_CONN_UPDATE:
         /* The central has updated the connection parameters. */
-        ESP_LOGI(TAG, "connection updated; status=%d",
-                 event->conn_update.status);
-
+        ESP_LOGI(TAG, "connection updated; status=%d", event->conn_update.status);
         /* Print connection descriptor */
         rc = ble_gap_conn_find(event->conn_update.conn_handle, &desc);
         if (rc != 0) {
@@ -259,6 +289,7 @@ static int gap_event_handler(struct ble_gap_event *event, void *arg) {
     /* Subscribe event */
     case BLE_GAP_EVENT_SUBSCRIBE:
         /* Print subscription info to log */
+    	subscribed = true;
         ESP_LOGI(TAG,
                  "subscribe event; conn_handle=%d attr_handle=%d "
                  "reason=%d prevn=%d curn=%d previ=%d curi=%d",
@@ -274,10 +305,17 @@ static int gap_event_handler(struct ble_gap_event *event, void *arg) {
     /* MTU update event */
     case BLE_GAP_EVENT_MTU:
         /* Print MTU update info to log */
+    	mtu_negotiated = true;
         ESP_LOGI(TAG, "mtu update event; conn_handle=%d cid=%d mtu=%d",
                  event->mtu.conn_handle, event->mtu.channel_id,
                  event->mtu.value);
         return rc;
+
+    case BLE_GAP_EVENT_PARING_COMPLETE:
+    	ESP_LOGI(TAG, "PAIRING complete event; conn_handle=%d cid=%d", event->mtu.conn_handle, event->mtu.channel_id );
+    	start_advertising(); // allow app later to find device after pairing
+    	return rc;
+
     }
 
     return rc;

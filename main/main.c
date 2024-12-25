@@ -49,6 +49,8 @@ extern uint16_t conn_handle;
 extern uint16_t tx_handle;
 extern bool connected;
 int holddown = 30;  // 3 Seconds
+bool subscribed = false;
+bool mtu_negotiated = false;
 
 // Local Variables
 char device_id[32] = { 0 };
@@ -171,8 +173,9 @@ extern void update_params();
 
 void keep_alive(void *arg) {
 	while(1){
-		vTaskDelay(pdMS_TO_TICKS(5000));
-		update_params();
+		vTaskDelay(pdMS_TO_TICKS(10000));
+		// if( connected )
+			// update_params();
 	}
 }
 
@@ -180,7 +183,7 @@ void uart_to_ble_task(void *arg) {
     uint8_t uart_buffer[UART_RX_BUFFER_SIZE];
     int len;
     while (1) {
-    	if( connected && holddown ){
+    	if( connected && subscribed && mtu_negotiated && holddown ){
     		holddown--;
     		vTaskDelay(pdMS_TO_TICKS(100));
     	}else{
@@ -188,7 +191,7 @@ void uart_to_ble_task(void *arg) {
     		len = uart_read_bytes(UART_NUM, uart_buffer, sizeof(uart_buffer), pdMS_TO_TICKS(50));
     		uart_buffer[len] = 0;
     		bool okay = autobaud( len, uart_buffer );
-    		if (len > 0 && connected && okay ) {
+    		if (len > 0 && connected && okay && subscribed && mtu_negotiated ) {
     			// ESP_LOGI(TAG, "uart bytes read: %d\n data:%s\n", len, uart_buffer );
     			// Send data as BLE notification
     			struct os_mbuf *om = ble_hs_mbuf_from_flat(uart_buffer, len);
