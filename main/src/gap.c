@@ -133,7 +133,7 @@ static void start_advertising(void) {
         ESP_LOGE(TAG, "failed to start advertising, error code: %d", rc);
         return;
     }
-    ESP_LOGI(TAG, "advertising started!");
+    ESP_LOGI(TAG, "advertising started, name=%s", name);
 }
 
 

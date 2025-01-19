@@ -189,6 +189,7 @@ void uart_to_ble_task(void *arg) {
     	}else{
     		// Read from UART
     		len = uart_read_bytes(UART_NUM, uart_buffer, sizeof(uart_buffer), pdMS_TO_TICKS(50));
+    		// ESP_LOGI(TAG, "uart bytes read: %d\n data:%s\n", len, uart_buffer );
     		uart_buffer[len] = 0;
     		bool okay = autobaud( len, uart_buffer );
     		if (len > 0 && connected && okay && subscribed && mtu_negotiated ) {
@@ -241,12 +242,16 @@ void app_main(void) {
     }
     sprintf( device_id, "XCBLE-%04d", crc );
 
+    vTaskDelay(pdMS_TO_TICKS(500));
+
     ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES ||
         ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         ESP_ERROR_CHECK(nvs_flash_erase());
         ret = nvs_flash_init();
     }
+
+
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "failed to initialize nvs flash, error code: %d ", ret);
         return;
